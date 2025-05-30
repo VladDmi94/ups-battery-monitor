@@ -203,4 +203,4 @@
 - Используется 64-битная версия Python Embedded (для 32-бит нужен другой релиз).
 
 ## Лицензия
-MIT (см. `LICENSE`).
+MIT (см. [LICENSE](https://github.com/VladDmi94/ups-battery-monitor/blob/main/LICENSE.txt)).
