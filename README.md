@@ -34,7 +34,7 @@
 ## Установка
 
 ### Вариант 1: Портативная версия (рекомендуется)
-1. Скачайте `PythonEmbedded.zip` из [Releases](https://github.com/your-username/your-repo/releases), распакуйте в `C:\UPSMonitor`.
+1. Скачайте `PythonEmbedded.zip` из [Releases](https://github.com/VladDmi94/ups-battery-monitor/releases), распакуйте в `C:\UPSMonitor`.
 2. Создайте `config.ini` в `C:\UPSMonitor`:
    ```ini
    [Settings]
