@@ -123,8 +123,4 @@ taskkill /f /im ups-battery-monitor.exe
 
 ## 📄 Лицензия
 
-Проект распространяется под лицензией MIT. Подробнее см. в файле [LICENSE](https://www.google.com).
-
-```
-
-```
+Проект распространяется под лицензией MIT. Подробнее см. в файле [LICENSE](https://github.com/VladDmi94/ups-battery-monitor/blob/main/LICENSE.txt).
