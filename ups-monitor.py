@@ -1,108 +1,86 @@
-import time
-import requests
 import os
 import sys
-import configparser
+import time
 from datetime import datetime
+import requests
 import win32com.client
+from dotenv import load_dotenv
 
-# Чтение конфигурации из config.ini
-config = configparser.ConfigParser()
-try:
-    with open("config.ini", encoding="utf-8") as f:
-        config.read_file(f)
-except FileNotFoundError:
-    error_msg = "Ошибка: файл config.ini не найден!"
-    temp_log = "ups_log.txt"
-    with open(temp_log, 'a', encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
-    sys.exit(1)
-except UnicodeDecodeError as e:
-    error_msg = f"Ошибка: не удалось декодировать config.ini: {str(e)}"
-    temp_log = "ups_log.txt"
-    with open(temp_log, 'a', encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
-    sys.exit(1)
+# Загрузка переменных окружения из .env
+load_dotenv()
 
-# Извлечение параметров из секции [Settings]
-try:
-    TELEGRAM_TOKEN = config["Settings"]["TELEGRAM_TOKEN"]
-    TELEGRAM_CHAT_ID = config["Settings"]["TELEGRAM_CHAT_ID"]
-    CHECK_INTERVAL = float(config["Settings"]["CHECK_INTERVAL"])
-    DELAY_NOTIFY = float(config["Settings"]["DELAY_NOTIFY"])
-    LOG_FILE = config["Settings"]["LOG_FILE"]
-    SHUTDOWN_THRESHOLD = float(config["Settings"]["SHUTDOWN_THRESHOLD"])
-    SHUTDOWN_TIMEOUT = float(config["Settings"]["SHUTDOWN_TIMEOUT"])
-except KeyError as e:
-    error_msg = f"Ошибка: параметр {str(e)} не найден в config.ini!"
-    temp_log = config.get("Settings", "LOG_FILE", fallback="ups_log.txt")
-    with open(temp_log, 'a', encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
-    sys.exit(1)
-except ValueError as e:
-    error_msg = f"Ошибка: неверное значение параметра в config.ini: {str(e)}"
-    temp_log = config.get("Settings", "LOG_FILE", fallback="ups_log.txt")
-    with open(temp_log, 'a', encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
-    sys.exit(1)
+LOG_FILE = os.getenv("LOG_FILE", "ups_log.txt")
 
-# Проверка параметров
-if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    error_msg = "Ошибка: TELEGRAM_TOKEN или TELEGRAM_CHAT_ID пустые!"
-    temp_log = LOG_FILE if LOG_FILE else "ups_log.txt"
-    with open(temp_log, 'a', encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
-    sys.exit(1)
-if CHECK_INTERVAL <= 0 or DELAY_NOTIFY < 0 or SHUTDOWN_THRESHOLD < 0 or SHUTDOWN_TIMEOUT < 0:
-    error_msg = "Ошибка: CHECK_INTERVAL, DELAY_NOTIFY, SHUTDOWN_THRESHOLD и SHUTDOWN_TIMEOUT должны быть неотрицательными!"
-    temp_log = LOG_FILE if LOG_FILE else "ups_log.txt"
-    with open(temp_log, 'a', encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
-    sys.exit(1)
-
-# --- Функции ---
 
 def write_to_log(message):
-    with open(LOG_FILE, 'a', encoding="utf-8") as f:
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {message}\n")
+
+
+# Считывание параметров из .env
+try:
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        raise ValueError("TELEGRAM_TOKEN или TELEGRAM_CHAT_ID не заданы!")
+
+    CHECK_INTERVAL = float(os.getenv("CHECK_INTERVAL", 5))
+    DELAY_NOTIFY = float(os.getenv("DELAY_NOTIFY", 60))
+    SHUTDOWN_THRESHOLD = float(os.getenv("SHUTDOWN_THRESHOLD", 20))
+    SHUTDOWN_TIMEOUT = float(os.getenv("SHUTDOWN_TIMEOUT", 30))
+
+    if (
+        CHECK_INTERVAL <= 0
+        or DELAY_NOTIFY < 0
+        or SHUTDOWN_THRESHOLD < 0
+        or SHUTDOWN_TIMEOUT < 0
+    ):
+        raise ValueError("Числовые параметры должны быть неотрицательными!")
+
+except Exception as e:
+    error_msg = f"Ошибка конфигурации: {str(e)}"
+    write_to_log(error_msg)
+    sys.exit(1)
+
 
 def send_to_telegram(text):
     try:
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             data={"chat_id": TELEGRAM_CHAT_ID, "text": text},
-            timeout=5
+            timeout=5,
         )
     except requests.exceptions.RequestException as e:
         write_to_log(f"Ошибка Telegram: {str(e)}")
+
 
 def get_battery_status():
     try:
         wmi = win32com.client.GetObject("winmgmts:")
         batteries = wmi.InstancesOf("Win32_Battery")
-        
+
         for battery in batteries:
             percent = battery.EstimatedChargeRemaining
             status = battery.BatteryStatus
             runtime = battery.EstimatedRunTime
-            
+
             if percent is None:
                 write_to_log("Ошибка: процент заряда батареи не обнаружен!")
                 sys.exit(1)
-            
-            plugged = (status == 2)
+
+            plugged = status == 2
             runtime = runtime if runtime != 0xFFFFFFFE else 0
-            
+
             return percent, plugged, runtime
-        
+
         write_to_log("Ошибка: батарея не обнаружена!")
         sys.exit(1)
-        
+
     except Exception as e:
         write_to_log(f"Ошибка WMI: {str(e)}")
         sys.exit(1)
 
-# --- Основная логика ---
 
 def main():
     power_lost_time = None
@@ -122,8 +100,14 @@ def main():
             log_msg = f"Отключение электричества! Заряд: {charge_at_loss}%, осталось: {remaining_time_at_loss} мин."
             write_to_log(log_msg)
 
-        if was_on_battery and not telegram_notified and not plugged:
-            if power_lost_time is not None and (datetime.now() - power_lost_time).total_seconds() >= DELAY_NOTIFY:
+        if (
+            was_on_battery
+            and power_lost_time is not None
+            and not telegram_notified
+            and not plugged
+        ):
+            elapsed = int((datetime.now() - power_lost_time).total_seconds())
+            if elapsed >= DELAY_NOTIFY:
                 send_to_telegram(
                     f"{power_lost_time.strftime('%d.%m.%Y %H:%M:%S')} - Отключение электричества!\n"
                     f"Заряд: {charge_at_loss}%, осталось: {remaining_time_at_loss} мин."
@@ -132,28 +116,40 @@ def main():
 
         if plugged and was_on_battery and power_lost_time is not None:
             restore_time = datetime.now()
-            duration = (restore_time - power_lost_time).seconds
-            log_msg = f"Электричество восстановлено. Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {duration // 60} мин {duration % 60} сек."
+            duration = int((restore_time - power_lost_time).total_seconds())
+            log_msg = (
+                f"Электричество восстановлено. Заряд: {charge}%, осталось: {remaining_time} мин, "
+                f"прошло: {duration // 60} мин {duration % 60} сек."
+            )
             write_to_log(log_msg)
             if duration >= DELAY_NOTIFY:
                 send_to_telegram(
                     f"{restore_time.strftime('%d.%m.%Y %H:%M:%S')} - Электричество восстановлено.\n"
-                    f"Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {duration // 60} мин {duration % 60} сек."
+                    f"Заряд: {charge}%, осталось: {remaining_time} мин, прошла: {duration // 60} мин {duration % 60} сек."
                 )
             sys.exit(0)
 
-        if was_on_battery and power_lost_time is not None and charge <= SHUTDOWN_THRESHOLD:
+        if (
+            was_on_battery
+            and power_lost_time is not None
+            and charge <= SHUTDOWN_THRESHOLD
+        ):
             event_time = datetime.now()
-            log_msg = f"Выключение ПК! Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {(datetime.now() - power_lost_time).seconds // 60} мин {(datetime.now() - power_lost_time).seconds % 60} сек."
+            duration = int((event_time - power_lost_time).total_seconds())
+            log_msg = (
+                f"Выключение ПК! Заряд: {charge}%, осталось: {remaining_time} мин, "
+                f"прошло: {duration // 60} мин {duration % 60} сек."
+            )
             write_to_log(log_msg)
             send_to_telegram(
                 f"{event_time.strftime('%d.%m.%Y %H:%M:%S')} - Выключение ПК!\n"
-                f"Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {(datetime.now() - power_lost_time).seconds // 60} мин {(datetime.now() - power_lost_time).seconds % 60} сек."
+                f"Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {duration // 60} мин {duration % 60} сек."
             )
             os.system(f"shutdown /s /t {int(SHUTDOWN_TIMEOUT)}")
             sys.exit(0)
 
         time.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     try:
