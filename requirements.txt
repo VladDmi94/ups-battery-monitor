@@ -1,3 +1,0 @@
-requests>=2.31.0
-pywin32>=306
-python-dotenv>=1.0.0
