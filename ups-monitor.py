@@ -35,13 +35,13 @@ try:
     SHUTDOWN_TIMEOUT = float(config["Settings"]["SHUTDOWN_TIMEOUT"])
 except KeyError as e:
     error_msg = f"Ошибка: параметр {str(e)} не найден в config.ini!"
-    temp_log = config.get("Settings", {}).get("LOG_FILE", "ups_log.txt")
+    temp_log = config.get("Settings", "LOG_FILE", fallback="ups_log.txt")
     with open(temp_log, 'a', encoding="utf-8") as f:
         f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
     sys.exit(1)
 except ValueError as e:
     error_msg = f"Ошибка: неверное значение параметра в config.ini: {str(e)}"
-    temp_log = config.get("Settings", {}).get("LOG_FILE", "ups_log.txt")
+    temp_log = config.get("Settings", "LOG_FILE", fallback="ups_log.txt")
     with open(temp_log, 'a', encoding="utf-8") as f:
         f.write(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')} - {error_msg}\n")
     sys.exit(1)
@@ -123,14 +123,14 @@ def main():
             write_to_log(log_msg)
 
         if was_on_battery and not telegram_notified and not plugged:
-            if (datetime.now() - power_lost_time).seconds >= DELAY_NOTIFY:
+            if power_lost_time is not None and (datetime.now() - power_lost_time).total_seconds() >= DELAY_NOTIFY:
                 send_to_telegram(
                     f"{power_lost_time.strftime('%d.%m.%Y %H:%M:%S')} - Отключение электричества!\n"
                     f"Заряд: {charge_at_loss}%, осталось: {remaining_time_at_loss} мин."
                 )
                 telegram_notified = True
 
-        if plugged and was_on_battery:
+        if plugged and was_on_battery and power_lost_time is not None:
             restore_time = datetime.now()
             duration = (restore_time - power_lost_time).seconds
             log_msg = f"Электричество восстановлено. Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {duration // 60} мин {duration % 60} сек."
@@ -142,7 +142,7 @@ def main():
                 )
             sys.exit(0)
 
-        if was_on_battery and charge <= SHUTDOWN_THRESHOLD:
+        if was_on_battery and power_lost_time is not None and charge <= SHUTDOWN_THRESHOLD:
             event_time = datetime.now()
             log_msg = f"Выключение ПК! Заряд: {charge}%, осталось: {remaining_time} мин, прошло: {(datetime.now() - power_lost_time).seconds // 60} мин {(datetime.now() - power_lost_time).seconds % 60} сек."
             write_to_log(log_msg)
